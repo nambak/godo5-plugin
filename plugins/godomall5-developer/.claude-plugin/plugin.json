@@ -2,9 +2,6 @@
   "name": "godomall5-developer",
   "version": "1.0.0",
   "description": "NHN Godo5(고도몰5) 쇼핑몰 개발 전문 플러그인. 자동패치 호환 module/ 기반 커스터마이징, Controller/Component/Widget 확장, DB 설계, 프론트엔드 스킨 작업 등 고도몰5 개발 전반을 지원합니다.",
-  "author": {
-    "name": "Daniel (다니엘)"
-  },
   "keywords": [
     "godomall",
     "godo5",
