@@ -7,7 +7,7 @@ NHN Godo5(고도몰5) 개발 전문 플러그인 마켓플레이스입니다.
 ### 1. 마켓플레이스 추가
 
 ```bash
-/plugin marketplace add your-github-id/godo5-plugin
+/plugin marketplace add nambak/godo5-plugin
 ```
 
 ### 2. 플러그인 설치
