@@ -233,7 +233,7 @@ class OrderNew extends \Bundle\Component\Order\OrderNew
 {
     public function saveOrder($orderInfo, $order, $memberData, ...)
     {
-        \Logger::channel('order')->info('INSERT orderInfo : ' . $this->orderNo, $orderInfo);
+        \Logger::channel('userLog')->debug('INSERT orderInfo : ' . $this->orderNo, $orderInfo);
         $arrBind = $this->db->get_binding(DBTableField::tableOrderInfo(), $orderInfo, 'insert');
         $this->db->set_insert_db(DB_ORDER_INFO, $arrBind['param'], $arrBind['bind'], 'y', false);
     }
@@ -377,19 +377,32 @@ Request::post()->toArray()      // POST → 배열
 Request::isAjax()               // Ajax 요청 여부
 ```
 
-### 로깅
+### 로깅 (디버깅)
+
+튜닝 시 데이터 확인이 필요하면 **`userLog` 채널**을 사용합니다. 이 채널 외의 채널·레벨로는 로그가 남지 않으므로 반드시 아래 형식을 따라야 합니다.
+
+| 항목 | 값 |
+|---|---|
+| 채널명 | `userLog` |
+| 로그 레벨 | `debug` (필수 — 다른 레벨 사용 불가) |
+| 저장 경로 | `/data/custom_log/custom_log-yyyy-mm-dd.log` |
+| 최대 파일 개수 | 7개 (하루 지난 파일은 자동 zip 압축) |
 
 ```php
-\Logger::channel('order')->info('message', [$context]);
-\Logger::channel('goods')->error('message', [$context]);
-
-// 커스텀 파일 로깅
-gd_file_put_contents(
-    PATH_LOG . 'debug_' . date('Ymd') . '.log',
-    date('Y-m-d H:i:s') . ' - ' . json_encode($data, JSON_UNESCAPED_UNICODE) . "\n"
+// 기본 사용법 — 반드시 채널 'userLog', 레벨 debug 사용
+\Logger::channel('userLog')->debug(
+    __METHOD__ . '[' . __LINE__ . '], USER LOG : ',
+    ['key' => $value]
 );
+```
 
-// 개발용 디버그 출력
+출력 예시:
+```
+[2024-04-08 11:55:34] : Bundle\Controller\Admin\Goods\GoodsListController::index[39],  USER LOG :  {"로그":"테스트"} {"process_id":27076}
+```
+
+```php
+// 개발용 디버그 출력 (화면 직접 출력)
 gd_Debug($variable);
 ```
 
@@ -433,7 +446,7 @@ throw new LayerException(__('message'));  // 레이어 팝업
 try {
     $this->orderService->cancelOrder($orderNo);
 } catch (\Exception $e) {
-    \Logger::channel('order')->error('주문 취소 실패: ' . $e->getMessage());
+    \Logger::channel('userLog')->debug('주문 취소 실패: ' . $e->getMessage());
     throw new AlertRedirectException($e->getMessage(), null, null, $returnUrl);
 }
 ```
@@ -601,7 +614,7 @@ class ErpApiService
 - [ ] 필수 `use` 선언
 - [ ] 타입 힌팅
 - [ ] Controller/Component 역할 분리
-- [ ] `\Logger::channel()` 로깅
+- [ ] `\Logger::channel('userLog')->debug()` 로깅
 - [ ] `__()` 다국어 문자열
 - [ ] 라이선스 헤더
 
