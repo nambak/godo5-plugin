@@ -313,21 +313,44 @@ $order = new \Bundle\Component\Order\Order(); // 사용 금지
 
 ## 데이터베이스 접근
 
+### DB 클래스 주요 메서드
+
+| 메서드 | 설명 |
+|--------|------|
+| `bind_param_push($arrBind, $type, $value)` | WHERE 절 바인딩 파라미터 추가 (타입: `s`=string, `i`=integer, `d`=decimal) |
+| `get_binding($fieldDef, $data, $mode, ...)` | DBTableField 정의 기반으로 INSERT/UPDATE 바인딩 데이터 추출 |
+| `query_fetch($query, $arrBind, $multiple)` | SELECT 결과 반환 (`$multiple`: true=여러 행, false=단일 행) |
+| `query_complete($query, $join, $where, ...)` | 쿼리 요소(JOIN, WHERE, ORDER 등)를 조합하여 완성된 쿼리문 생성 |
+| `set_insert_db($table, $param, $bind, ...)` | INSERT 실행 |
+| `set_update_db($table, $param, $where, $bind)` | UPDATE 실행, 영향받은 행 수 반환 |
+| `set_delete_db($table, $where, $bind)` | DELETE 실행, 영향받은 행 수 반환 |
+| `bind_query($query, $arrBind)` | 직접 작성한 쿼리문과 바인딩 파라미터를 전달하여 실행 |
+| `getCount($query, $arrBind)` | 쿼리 결과의 행 개수 반환 |
+| `insert_id()` | 마지막 INSERT의 auto_increment 값 반환 |
+
+> **주의**: `query()` 메서드는 **완성된 SQL 문자열만** 받습니다. 바인딩 파라미터를 넘길 수 없으므로, 파라미터가 필요한 경우 반드시 `query_fetch()`, `bind_query()`, `set_insert_db()`, `set_update_db()`, `set_delete_db()` 등 바인딩 전용 메서드를 사용하세요.
+
 ### 바인드 쿼리 (필수, SQL Injection 방지)
 
 ```php
 // 올바른 방법
 $arrBind = [];
 $db->bind_param_push($arrBind, 's', $orderNo);
-$query = "SELECT * FROM es_order WHERE orderNo = ?";
+$query = "SELECT orderNo, mallSno, memNo FROM es_order WHERE orderNo = ?";
 $result = $db->query_fetch($query, $arrBind);         // 여러 행
 $singleRow = $db->query_fetch($query, $arrBind, false); // 단일 행
+
+// 건수 조회
+$count = $db->getCount("SELECT orderNo FROM es_order WHERE memNo = ?", $arrBind);
+
+// 직접 쿼리 실행 (bind_query)
+$db->bind_query("UPDATE es_order SET orderStatus = ? WHERE orderNo = ?", $arrBind);
 
 // 잘못된 방법 (SQL Injection 위험)
 $query = "SELECT * FROM es_order WHERE orderNo = '{$orderNo}'";
 ```
 
-### INSERT / UPDATE 패턴
+### INSERT / UPDATE / DELETE 패턴
 
 ```php
 // INSERT
@@ -340,6 +363,31 @@ $arrBind = $this->db->get_binding(DBTableField::tableMember(), $data, 'update',
     gd_array_keys($data), ['sno', 'memNo']);
 $this->db->bind_param_push($arrBind['bind'], 'i', $memNo);
 $this->db->set_update_db(DB_MEMBER, $arrBind['param'], 'memNo=?', $arrBind['bind']);
+
+// DELETE
+$arrBind = [];
+$this->db->bind_param_push($arrBind, 'i', $sno);
+$this->db->set_delete_db('es_testTable', 'sno=?', $arrBind);
+```
+
+### 트랜잭션 처리
+
+```php
+// 방법 1: try-catch (세밀한 제어)
+try {
+    $db->begin_tran();
+    $db->set_insert_db(...);
+    $db->set_update_db(...);
+    $db->commit();
+} catch (\Exception $e) {
+    $db->rollback();
+    throw $e;
+}
+
+// 방법 2: Closure (간결한 처리)
+\DB::transaction(function () use ($data) {
+    // INSERT, UPDATE 등 — 예외 발생 시 자동 rollback
+});
 ```
 
 ### Eloquent ORM (Repository 패턴)
@@ -685,7 +733,7 @@ class ErpApiService
 4. `var_dump()`, `print_r()`를 프로덕션에 남기기
 5. 한 파일 500줄 초과
 6. `new`로 Bundle 클래스 직접 생성 (`App::load()` 사용)
-7. SQL 직접 문자열 삽입 (바인드 쿼리 필수)
+7. SQL 직접 문자열 삽입 (바인드 쿼리 필수) / `query()`에 변수 직접 삽입 금지
 8. `Asset/Admin/gd_share/` 디렉토리 수정
 9. 하드코딩된 DB 접속 정보
 10. 솔루션 기본 테이블명·컬럼명·Data Type 수정·삭제
