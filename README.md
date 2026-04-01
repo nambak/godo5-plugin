@@ -1,3 +1,4 @@
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/nambak/godo5-plugin?utm_source=oss&utm_medium=github&utm_campaign=nambak%2Fgodo5-plugin&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 # godomall5-plugins
 
 NHN Godo5(고도몰5) 개발 전문 플러그인 마켓플레이스입니다.
