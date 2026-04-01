@@ -1,5 +1,33 @@
 # 고도몰5 주요 DB 테이블 상수 및 설정 참조
 
+## DB 클래스 메서드 레퍼런스
+
+### 주요 메서드
+
+| 메서드 | 설명 |
+|--------|------|
+| `bind_param_push($arrBind, $type, $value)` | 바인딩 파라미터 추가 (`s`=string, `i`=integer, `d`=decimal) |
+| `get_binding($fieldDef, $data, $mode, ...)` | DBTableField 정의 기반 INSERT/UPDATE 바인딩 데이터 추출 |
+| `query_fetch($query, $arrBind, $multiple)` | SELECT 결과 반환 (true=여러 행, false=단일 행) |
+| `query_complete($query, $join, $where, ...)` | 쿼리 요소 조합하여 완성된 쿼리문 생성 |
+| `set_insert_db($table, $param, $bind, ...)` | INSERT 실행 |
+| `set_update_db($table, $param, $where, $bind)` | UPDATE 실행, 영향받은 행 수 반환 |
+| `set_delete_db($table, $where, $bind)` | DELETE 실행, 영향받은 행 수 반환 |
+| `bind_query($query, $arrBind)` | 직접 쿼리 + 바인딩 파라미터 실행 |
+| `getCount($query, $arrBind)` | 쿼리 결과 행 개수 반환 |
+| `insert_id()` | 마지막 INSERT의 auto_increment 값 |
+
+> **주의**: `query()` 메서드는 완성된 SQL 문자열만 받으며 바인딩 파라미터를 넘길 수 없음. 파라미터가 필요한 경우 반드시 `query_fetch()`, `bind_query()`, `set_insert_db()` 등 바인딩 전용 메서드 사용.
+
+### 트랜잭션
+
+| 방식 | 사용법 |
+|------|--------|
+| try-catch | `$db->begin_tran()` → 쿼리 실행 → `$db->commit()` / `$db->rollback()` |
+| Closure | `\DB::transaction(function () { ... })` — 예외 시 자동 rollback |
+
+---
+
 ## 주요 테이블 상수
 
 ### 주문 관련
