@@ -57,6 +57,27 @@ gd_policy('member.auth_cellphone')     // 휴대폰 인증 정책
 | Charset | utf8mb4 |
 | Collation | utf8mb4_general_ci |
 | Primary Key | 필수 |
-| Comment | 필수 |
+| Comment | 테이블·컬럼 모두 필수 |
+| NotNull 컬럼 | 기본값(Default Value) 지정 필수 |
 | 금지 접두사 | `es_`, `zz_` |
 | 커스텀 접두사 | `dpx_` 권장 |
+
+## 솔루션 기본 데이터 보호
+
+| 항목 | 규칙 |
+|------|------|
+| 테이블명·컬럼명 | 수정·삭제 금지 (사이트 오류 발생) |
+| 컬럼 Data Type | 수정 금지 (새 컬럼 추가로 대체) |
+| DBTableField 원본 | `Bundle/Component/Database/DBTableField.php` |
+| 테이블 추가 메서드 | `tableTestTable()` → `es_testTable` |
+
+## 쿼리 작성 가이드라인
+
+| 항목 | 규칙 |
+|------|------|
+| SELECT 절 | `*` 사용 자제, 필요한 컬럼만 명시 |
+| WHERE 절 | 조회 조건 필수 (전체 테이블 조회 금지) |
+| 데이터 타입 | 문자형은 `''` 사용 필수 (인덱스 미사용 방지) |
+| 조건 컬럼 가공 | `SUBSTR()` 등 함수 적용 금지 → `LIKE` 등으로 대체 |
+| JOIN | 사용하지 않는 테이블 JOIN 금지 |
+| GROUP BY | 집계 함수 없이 사용 금지 |

@@ -105,18 +105,38 @@ module/Controller/Front/{Domain}/XxxController.php   ← 여기서 개발
 
 ## 네임스페이스 규칙
 
-```php
-// Bundle 영역 (코어, 참조만)
-namespace Bundle\Component\{Domain};
-namespace Bundle\Controller\Front\{Domain};
-namespace Bundle\Controller\Admin\{Domain};
-namespace Bundle\Repository\{Domain};
+### 핵심 원칙
 
-// module 영역 (커스텀) — Bundle 접두사 생략
-namespace Component\{Domain};
-namespace Controller\Front\{Domain};
-namespace Controller\Admin\{Domain};
-namespace Widget\Front\{Domain};
+- **module/ 디렉토리의 네임스페이스에는 `Bundle` 접두사를 사용하지 않는다.**
+- module/의 클래스는 `Bundle\`을 제거한 네임스페이스를 사용하며, `extends`로 Bundle 원본 클래스를 상속한다.
+- 고도몰5 Classloader가 `module > Bundle` 우선순위로 로드하므로, 동일 네임스페이스 경로의 클래스는 자동 오버라이드된다.
+
+### 네임스페이스 매핑
+
+| 계층 | Bundle (코어, 참조만) | module (커스텀, 여기서 개발) |
+|------|----------------------|---------------------------|
+| Component | `Bundle\Component\{Domain}` | `Component\{Domain}` |
+| Controller (Front) | `Bundle\Controller\Front\{Domain}` | `Controller\Front\{Domain}` |
+| Controller (Admin) | `Bundle\Controller\Admin\{Domain}` | `Controller\Admin\{Domain}` |
+| Controller (Mobile) | `Bundle\Controller\Mobile\{Domain}` | `Controller\Mobile\{Domain}` |
+| Widget (Front) | `Bundle\Widget\Front\{Domain}` | `Widget\Front\{Domain}` |
+| Widget (Mobile) | `Bundle\Widget\Mobile\{Domain}` | `Widget\Mobile\{Domain}` |
+| Service | `Bundle\Service\{Domain}` | `Service\{Domain}` |
+| Repository | `Bundle\Repository\{Domain}` | `Repository\{Domain}` |
+| Database | `Bundle\Component\Database` | `Component\Database` |
+
+### 예시
+
+```php
+// Bundle 원본 (수정 금지)
+// 파일: Bundle/Component/Order/Order.php
+namespace Bundle\Component\Order;
+class Order { ... }
+
+// module 확장 (여기서 개발)
+// 파일: module/Component/Order/Order.php
+namespace Component\Order;                              // ← Bundle 접두사 없음
+class Order extends \Bundle\Component\Order\Order { ... } // ← Bundle 원본 상속
 ```
 
 ---
@@ -350,6 +370,82 @@ public static function tableGoods($conf = null)
 - **Engine**: InnoDB (필수)
 - **Charset**: utf8mb4 / **Collation**: utf8mb4_general_ci
 - **Primary Key, Comment**: 필수
+- **NotNull 컬럼**: 기본값(Default Value) 지정 필수 — 미설정 시 데이터 무결성 오류 발생
+
+### 솔루션 기본 데이터 보호 규칙
+
+- 솔루션 기본 **테이블명·컬럼명 수정·삭제 금지** — 변경 시 사이트 오류 발생
+- 솔루션 기본 **컬럼 Data Type 수정 금지** — 필요하면 새 컬럼을 추가하여 사용
+- DBTableField 원본 위치: `Bundle/Component/Database/DBTableField.php`
+- 테이블 추가 시 메서드 네이밍: `tableTestTable()` → 테이블명 `es_testTable`
+
+### 쿼리 작성 가이드라인
+
+#### SELECT 절에 `*` 사용 자제
+
+필요한 컬럼만 명시적으로 지정합니다. 불필요한 데이터 반환은 쿼리 속도를 저하시킵니다.
+
+```php
+// 잘못된 방법
+$query = "SELECT * FROM es_order WHERE orderNo = ?";
+
+// 올바른 방법
+$query = "SELECT orderNo, mallSno, memNo FROM es_order WHERE orderNo = ?";
+```
+
+#### WHERE 절 조회 조건 필수
+
+조회 조건 없이 전체 테이블을 조회하면 성능이 심각하게 저하됩니다.
+
+```php
+// 잘못된 방법 — 전체 테이블 조회
+$query = "SELECT orderNo FROM es_order";
+
+// 올바른 방법 — 조건 명시
+$query = "SELECT orderNo FROM es_order WHERE orderNo = ?";
+```
+
+#### 문자형·숫자형 데이터 타입 구분
+
+인덱스 컬럼의 데이터 타입이 불일치하면 인덱스를 사용할 수 없습니다.
+
+```sql
+-- 숫자형 컬럼
+WHERE goodsNo = 123456
+
+-- 문자형 컬럼 (따옴표 필수)
+WHERE orderNo = '123456'
+```
+
+#### 조건 컬럼 가공 금지 (인덱스 활용)
+
+인덱스 컬럼에 함수를 적용하면 인덱스를 사용할 수 없습니다. 상수 부분을 가공하세요.
+
+```sql
+-- 잘못된 방법 — 인덱스 사용 불가
+WHERE SUBSTR(orderStatus, 1, 1) = 'o'
+
+-- 올바른 방법 — 인덱스 사용 가능
+WHERE orderStatus LIKE 'o%'
+```
+
+#### 불필요한 JOIN·GROUP BY 금지
+
+사용하지 않는 테이블을 JOIN하거나, 집계 함수 없이 GROUP BY를 사용하지 마세요.
+
+```sql
+-- 잘못된 방법 — es_orderGoods 컬럼을 사용하지 않으면서 JOIN
+SELECT a.orderNo, a.mallSno, a.memNo
+FROM es_order AS a
+LEFT JOIN es_orderGoods AS b ON b.sno = a.sno
+WHERE a.orderNo = '20240415001010'
+
+-- 잘못된 방법 — 집계 함수 없이 GROUP BY
+SELECT orderNo, mallSno
+FROM es_order
+WHERE orderStatus = 'o1'
+GROUP BY orderNo, mallSno
+```
 
 ---
 
@@ -592,6 +688,10 @@ class ErpApiService
 7. SQL 직접 문자열 삽입 (바인드 쿼리 필수)
 8. `Asset/Admin/gd_share/` 디렉토리 수정
 9. 하드코딩된 DB 접속 정보
+10. 솔루션 기본 테이블명·컬럼명·Data Type 수정·삭제
+11. `SELECT *` 사용 (필요한 컬럼만 명시)
+12. WHERE 조건 없이 전체 테이블 조회
+13. 인덱스 컬럼에 함수 적용 (`SUBSTR()` 등 → `LIKE` 등으로 대체)
 
 ---
 
