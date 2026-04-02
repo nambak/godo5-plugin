@@ -316,7 +316,7 @@ class GoodsDisplayMainWidget extends \Bundle\Widget\Front\Goods\GoodsDisplayMain
 
 ### Cart 가격 흐름
 
-`getCartGoodsData()`는 **`es_cart` 테이블이 아닌 `gd_goods` 테이블에서 `goodsPrice`를 조회**합니다. 장바구니 테이블에는 가격이 저장되지 않으며, 조회 시마다 상품 테이블에서 실시간으로 가져옵니다. 커스텀 가격 필드를 추가할 때도 이 흐름을 고려하세요.
+`getCartGoodsData()`는 **`es_cart` 테이블이 아닌 `es_goods` 테이블에서 `goodsPrice`를 조회**합니다. 장바구니 테이블에는 가격이 저장되지 않으며, 조회 시마다 상품 테이블에서 실시간으로 가져옵니다. 커스텀 가격 필드를 추가할 때도 이 흐름을 고려하세요.
 
 ---
 
