@@ -143,6 +143,8 @@ class Order extends \Bundle\Component\Order\Order { ... } // ← Bundle 원본 �
 
 ## Controller 라이프사이클
 
+> **⚠️ Controller 전체 복사 금지**: Bundle Controller 파일을 통째로 복사하여 module/에 붙여넣으면 안 됩니다. 네임스페이스 불일치, Bundle 내부 참조 깨짐 등 심각한 문제가 발생합니다. 반드시 `extends \Bundle\Controller\...` + `parent::index()` 패턴으로 필요한 메서드만 오버라이드하세요.
+
 실행 순서: `pre()` → `index()` → `post()` → `after()`
 
 각 메서드의 역할:
@@ -228,6 +230,8 @@ $this->redirect('url');                      // 리다이렉트
 
 ## Component 확장 패턴
 
+> **⚠️ 메서드 단위 오버라이드**: Cart.php(9,500줄)처럼 거대한 파일도 메서드 하나만 override 가능합니다. 파일 전체를 복사하지 말고 `extends \Bundle\Component\{Domain}\{Class}`로 상속하세요.
+
 ### 패턴 1: parent 호출 + 확장 (권장)
 
 ```php
@@ -293,6 +297,26 @@ class GoodsDisplayMainWidget extends \Bundle\Widget\Front\Goods\GoodsDisplayMain
     }
 }
 ```
+
+---
+
+## Cart 커스터마이징 주의사항
+
+### saveInfoCart() 배열 인덱싱 규칙
+
+`tableCart()`에 커스텀 필드를 추가할 때, 프론트 hidden input은 **반드시 배열 형태** (`name="field[]"`)로 전송해야 합니다. `saveInfoCart()` 내부에서 `$arrData[$field][$goodsIdx]`로 배열 인덱싱하기 때문입니다. 스칼라 값으로 전송하면 데이터가 저장되지 않습니다.
+
+```html
+<!-- 올바른 방법 — 배열 형태 -->
+<input type="hidden" name="customField[]" value="{=goodsData['customValue']}" />
+
+<!-- 잘못된 방법 — 스칼라 값 (saveInfoCart에서 인덱싱 실패) -->
+<input type="hidden" name="customField" value="{=goodsData['customValue']}" />
+```
+
+### Cart 가격 흐름
+
+`getCartGoodsData()`는 **`es_cart` 테이블이 아닌 `gd_goods` 테이블에서 `goodsPrice`를 조회**합니다. 장바구니 테이블에는 가격이 저장되지 않으며, 조회 시마다 상품 테이블에서 실시간으로 가져옵니다. 커스텀 가격 필드를 추가할 때도 이 흐름을 고려하세요.
 
 ---
 
