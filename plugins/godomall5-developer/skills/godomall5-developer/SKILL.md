@@ -767,6 +767,43 @@ class ErpApiService
 
 ---
 
+## 프레임워크 주요 함정
+
+1. **`parent::index()` exit 동작**: 일부 Bundle 컨트롤러는 `index()`에서 `exit()`를 호출합니다. `post()` 이후 처리가 필요하면 반드시 부모 소스를 먼저 확인하세요.
+2. **`saveInfoCart()` 배열 인덱싱**: 프론트엔드 hidden input은 반드시 배열 형태(`name="field[]"`)를 사용해야 합니다. 상품이 1개뿐이어도 스칼라 값으로 전송하면 `$arrData[$field][$goodsIdx]` 인덱싱에 실패합니다.
+3. **장바구니 가격 흐름**: `getCartGoodsData()`는 `es_cart`가 아닌 `es_goods` 테이블에서 실시간 가격을 조회합니다.
+4. **네임스페이스 충돌**: module 클래스에서 `Bundle` 접두사를 제거하지 않으면 오버라이드가 동작하지 않습니다.
+5. **프론트엔드 JS 이벤트**: 동적 요소에는 직접 바인딩 대신 이벤트 위임 사용 — `$(document).on('click', '.btn', ...)`
+6. **컨트롤러 전체 복사 금지**: Bundle Controller를 통째로 복사하면 네임스페이스 불일치, Bundle 내부 참조 깨짐 등 심각한 문제 발생. 반드시 `extends` + 메서드 단위 오버라이드로 접근하세요.
+
+---
+
+## 디버깅 가이드라인
+
+- 500 에러나 예상치 못한 동작을 디버깅할 때는 **실제 코드 로직과 클래스 계층 구조**를 먼저 확인하세요.
+- 구체적인 증거 없이 OPcache 초기화, DB 트랜잭션 격리 수준 등으로 원인을 추측하지 마세요.
+- 디버깅 순서: 코드 로직 → 클래스 상속 체인 → DB 쿼리 → 프레임워크 설정
+
+---
+
+## 오버라이드/수정 제안 전 체크리스트
+
+코드 변경을 제안하기 전에 반드시 아래 항목을 확인하세요:
+
+- [ ] **Bundle/ 보호 확인** — 수정 대상이 `Bundle/`이 아닌 `module/`에 있는가?
+- [ ] **보호 파일 미접촉** — `Asset/Admin/gd_share/`, `config/app/system_version.php`, `config/plus_shop_info.php`를 건드리지 않는가?
+- [ ] **네임스페이스 정합성** — module 클래스에서 `Bundle` 접두사를 올바르게 제거했는가?
+- [ ] **App::load() 사용** — `new \Bundle\...` 대신 `App::load()` 또는 `App::getInstance()`를 사용하는가?
+- [ ] **부모 클래스 동작 확인** — `parent::index()` 등이 `exit()`를 호출하는지 소스를 직접 확인했는가?
+- [ ] **바인드 쿼리 사용** — SQL에 변수를 직접 삽입하지 않고 `bind_param_push()`를 사용하는가?
+- [ ] **테이블 접두사 확인** — 커스텀 테이블에 `es_`/`zz_` 대신 `dpx_`를 사용하는가?
+- [ ] **Logger API 사용** — `file_put_contents`/`var_dump` 대신 `\Logger::channel('userLog')->debug()`를 사용하는가?
+- [ ] **금지 함수 미사용** — `eval()`, `extract()`, `var_dump()`, `print_r()`를 사용하지 않는가?
+- [ ] **관리자 설정 우선 확인** — 코드 수정 전에 관리자 UI에 이미 해당 설정이 있는지 확인했는가?
+- [ ] **라이선스 헤더** — 새 파일에 NHN godo 라이선스 헤더를 포함했는가?
+
+---
+
 ## 개발 워크플로우
 
 ### Step 1: 상황 파악
