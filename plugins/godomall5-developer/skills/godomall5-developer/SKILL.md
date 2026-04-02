@@ -304,7 +304,7 @@ class GoodsDisplayMainWidget extends \Bundle\Widget\Front\Goods\GoodsDisplayMain
 
 ### saveInfoCart() 배열 인덱싱 규칙
 
-`tableCart()`에 커스텀 필드를 추가할 때, 프론트 hidden input은 **반드시 배열 형태** (`name="field[]"`)로 전송해야 합니다. `saveInfoCart()` 내부에서 `$arrData[$field][$goodsIdx]`로 배열 인덱싱하기 때문입니다. 스칼라 값으로 전송하면 데이터가 저장되지 않습니다.
+`tableCart()`에 커스텀 필드를 추가할 때, 프론트 hidden input은 **반드시 배열 형태** (`name="field[]"`)로 전송해야 합니다. `saveInfoCart()` 내부에서 `$arrData[$field][$goodsIdx]`로 배열 인덱싱하기 때문입니다. 상품이 1개뿐이어도 스칼라 값으로 전송하면 인덱싱에 실패하여 데이터가 저장되지 않습니다.
 
 ```html
 <!-- 올바른 방법 — 배열 형태 -->
