@@ -63,6 +63,7 @@ HTTP Request
 3. **바인드 쿼리 필수** — SQL Injection 방지
 4. **커스텀 테이블 접두사** — `dpx_` 사용 (es_, zz_ 금지)
 5. **관리자 설정 우선 확인** — 코드 수정 전 관리자 페이지 설정 확인
+6. **튜닝 코드 로깅은 `userLog` 채널 `debug` 레벨만 허용** — 상세는 아래 "로깅 규칙" 참조
 
 ---
 
@@ -81,6 +82,42 @@ HTTP Request
 - [ ] `eval()`, `extract()`, `var_dump()`, `print_r()` 미사용인가?
 - [ ] 코드 수정 전 관리자 UI에 기존 설정이 있는지 확인했는가?
 - [ ] 새 파일에 라이선스 헤더를 포함했는가?
+
+---
+
+## 로깅 규칙 (중요)
+
+module/ 이하 튜닝 코드에서 로그를 남길 때는 **반드시 아래 형식만 사용**한다. 다른 채널/레벨은 고도몰5 설정상 `/data/custom_log/`에 기록되지 않아 디버깅 자체가 불가능해진다.
+
+- **채널**: `userLog` (강제)
+- **레벨**: `debug` (강제 — 다른 레벨 사용 불가)
+- **저장 경로**: `/data/custom_log/custom-log_*.log`
+- **메시지 prefix 컨벤션**: `__METHOD__ . '[' . __LINE__ . '], '`
+- **참고**: `godomall5-developer` 스킬 SKILL.md "로깅 (디버깅)" 섹션 / https://devcenter-help.nhn-commerce.com/other-guide/log
+
+### 표준 패턴
+
+```php
+try {
+    // 로직
+} catch (\Throwable $e) {
+    \Logger::channel('userLog')->debug(
+        __METHOD__ . '[' . __LINE__ . '], ' . $e->getMessage(),
+        [
+            'file'  => $e->getFile(),
+            'line'  => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+        ]
+    );
+    throw new \Framework\Debug\Exception\AlertBackException(__('사용자용 안내 메시지'));
+}
+```
+
+### 금지 사항
+
+- `\Logger::error(...)`, `\Logger::info(...)` 등을 **튜닝 코드(module/)에서 호출하지 말 것**. Bundle 코어 전용 패턴이며 튜닝 코드에서 호출하면 파일에 기록되지 않는다.
+- 브라우저에 예외를 직접 `echo`/`print_r`/`var_dump`로 출력하는 디버깅은 금지. 반드시 위 Logger + `AlertBackException` 조합 사용.
+- 사용자에게는 `AlertBackException` / `AlertRedirectException`로 친화적 메시지만 노출.
 
 ---
 
