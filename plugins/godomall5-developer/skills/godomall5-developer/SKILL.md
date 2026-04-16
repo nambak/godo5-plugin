@@ -818,7 +818,7 @@ class ErpApiService
 5. 한 파일 500줄 초과
 6. `new`로 Bundle 클래스 직접 생성 (`App::load()` 사용)
 7. SQL 직접 문자열 삽입 (바인드 쿼리 필수) / `query()`에 변수 직접 삽입 금지
-8. `Asset/Admin/gd_share/` 디렉토리 수정
+8. `Asset/Admin/` 디렉토리 전체 및 `admin/gd_share/` 디렉토리 수정
 9. 하드코딩된 DB 접속 정보
 10. 솔루션 기본 테이블명·컬럼명·Data Type 수정·삭제
 11. `SELECT *` 사용 (필요한 컬럼만 명시)

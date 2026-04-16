@@ -80,7 +80,7 @@ HTTP Request
 코드 변경 전에 반드시 확인:
 
 - [ ] 수정 대상이 `Bundle/`이 아닌 `module/`에 있는가?
-- [ ] `Asset/Admin/` 전체, `admin/gd_share/`, `config/app/system_version.php` 등 보호 파일을 건드리지 않는가?
+- [ ] `Asset/Admin/` 전체, `admin/gd_share/`, `config/app/system_version.php`, `config/plus_shop_info.php` 보호 파일을 건드리지 않는가?
 - [ ] 어드민 스킨(footer/head/layout/menu/도메인 화면)을 수정한다면 `Asset/Admin/`이 아닌 `admin/<동일 경로>`에서 작업하는가?
 - [ ] module 네임스페이스에서 `Bundle` 접두사를 올바르게 제거했는가?
 - [ ] `new \Bundle\...` 대신 `App::load()` 사용하는가?
