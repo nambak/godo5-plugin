@@ -36,9 +36,12 @@ description: "NHN Godo5(고도몰5) 쇼핑몰 개발 전문 스킬. 새 프로�
 
 **수정 금지 대상:**
 - `Bundle/` 디렉토리 전체
-- `Asset/Admin/gd_share/` 디렉토리
+- `Asset/Admin/` 디렉토리 전체 (관리자 스킨 원본 레퍼런스 — 자동패치/업그레이드로 덮어써짐)
+- `admin/gd_share/` 디렉토리 (자동 중앙관리 대상)
 - `config/app/system_version.php`
 - `config/plus_shop_info.php`
+
+> 어드민 스킨(footer/head/layout/menu/도메인 화면)은 `Asset/Admin/`이 아니라 `admin/<동일 경로>`에 미러링하여 오버라이드한다. 자세한 규칙은 아래 "관리자 스킨 오버라이드" 섹션 참조.
 
 ---
 
@@ -79,10 +82,21 @@ ProjectRoot/
 │   ├── Widget/                # Bundle Widget 상속 확장
 │   └── Component/Database/    # DBTableField 커스텀 필드 정의
 │
-├── Asset/Admin/               # 관리자 페이지 뷰 파일
-│   ├── gd_share/              # 공유 자산 (수정 금지)
-│   ├── css/admin-custom.css   # 커스텀 CSS (자동 로드)
-│   └── script/admin-custom.js # 커스텀 JS (자동 로드)
+├── Asset/Admin/               # 관리자 스킨 "원본 레퍼런스" — 절대 수정 금지(번들 배포본)
+│   ├── footer.php             # 어드민 푸터 원본
+│   ├── head.php               # 어드민 head 원본
+│   ├── layout_*.php           # 레이아웃 원본
+│   ├── menu*.php              # 메뉴 원본
+│   └── base/ goods/ order/ policy/ design/ member/ mobile/ share/ ...  # 도메인별 화면 원본
+│
+├── admin/                     # 실제 서비스되는 관리자 영역.
+│                              # Asset/Admin/<경로> 와 동일 경로에 파일을 두면
+│                              # admin/ 쪽 파일이 우선 적용됨(스킨 오버라이드).
+│   ├── footer.php             # ← 예: Asset/Admin/footer.php를 미러링해 여기서 편집
+│   ├── goods/ order/ policy/ design/   # 같은 규칙으로 화면 파일 오버라이드
+│   ├── script/admin-custom.js # 모든 어드민 화면에 자동 로드되는 커스텀 JS
+│   ├── css/admin-custom.css   # 모든 어드민 화면에 자동 로드되는 커스텀 CSS
+│   └── gd_share/              # 자동패치 중앙관리 대상 — 수정 금지
 │
 └── data/skin/                 # 프론트엔드 템플릿
     ├── front/{skinName}/      # PC 스킨
@@ -297,6 +311,52 @@ class GoodsDisplayMainWidget extends \Bundle\Widget\Front\Goods\GoodsDisplayMain
     }
 }
 ```
+
+---
+
+## 관리자 스킨 오버라이드 (Bundle/module 상속과 다른 별도 메커니즘)
+
+어드민 화면(`footer.php`, `head.php`, `layout_*.php`, `menu*.php`, `base/`, `goods/`, `order/`, `policy/`, `design/`, `member/`, `mobile/`, `share/` 등)은 **클래스가 아니라 include 기반 뷰 파일**입니다. 따라서 Bundle/→module/ 네임스페이스 상속이 아니라 **경로 미러링**으로 오버라이드합니다.
+
+### 규칙
+
+- **원본 위치**: `Asset/Admin/<경로>` — 번들 배포본. 자동패치/업그레이드 대상이므로 **절대 수정 금지**.
+- **오버라이드 위치**: `admin/<경로>` — `Asset/Admin/`과 동일한 상대 경로에 같은 이름으로 파일을 두면 그 파일이 적용됩니다.
+- **자동 로드 자산**: `admin/script/admin-custom.js`, `admin/css/admin-custom.css`는 모든 어드민 화면에 항상 로드됩니다 (`Asset/Admin/head.php`가 `PATH_ADMIN_SKIN` 기준으로 include).
+- **자동 중앙관리 영역**: `admin/gd_share/`는 자동패치 대상 — 손대지 않습니다 (`admin/readme.txt` 1번).
+
+### 오버라이드 절차
+
+1. 변경 대상 파일을 `Asset/Admin/<경로>`에서 찾는다 (열람만, 편집 금지).
+2. 동일 상대 경로로 `admin/<경로>`에 파일이 있는지 확인.
+   - 있으면 그 파일만 수정.
+   - 없으면 `Asset/Admin/<경로>` 파일을 `admin/<경로>`로 복사한 뒤 수정. 원본은 그대로 둔다.
+3. 변경 사항은 즉시 반영됩니다 (별도 컴파일 불필요. OPcache 정책에 따라 캐시 클리어가 필요할 수 있음).
+
+### 예시 — 어드민 푸터에 PHP 버전 표시
+
+```php
+// ❌ 잘못된 방법: 번들 원본 직접 수정 (자동패치로 롤백)
+// 파일: Asset/Admin/footer.php
+
+// ✅ 올바른 방법: admin/ 쪽 동일 경로에 파일 만들거나 수정
+// 파일: admin/footer.php
+?>
+<div class="footer">
+    <div class="copyright">
+        ...버전 정보...
+        PHP Version: <?= phpversion(); ?>
+    </div>
+</div>
+```
+
+### Bundle/module 상속과의 차이
+
+| 구분 | 대상 | 오버라이드 방식 | 위치 |
+|------|------|-----------------|------|
+| Component / Controller / Widget | PHP 클래스 | `extends \Bundle\...` + `App::load()` | `module/` |
+| 관리자 스킨 (footer/head/layout/menu/도메인 화면) | 뷰 파일(include) | 같은 상대 경로 미러링 | `admin/` |
+| 프론트 스킨 | 뷰 파일 | 스킨 디렉토리 변경 | `data/skin/{front,mobile}/{skinName}/` |
 
 ---
 
@@ -758,7 +818,7 @@ class ErpApiService
 5. 한 파일 500줄 초과
 6. `new`로 Bundle 클래스 직접 생성 (`App::load()` 사용)
 7. SQL 직접 문자열 삽입 (바인드 쿼리 필수) / `query()`에 변수 직접 삽입 금지
-8. `Asset/Admin/gd_share/` 디렉토리 수정
+8. `Asset/Admin/` 디렉토리 전체 및 `admin/gd_share/` 디렉토리 수정
 9. 하드코딩된 DB 접속 정보
 10. 솔루션 기본 테이블명·컬럼명·Data Type 수정·삭제
 11. `SELECT *` 사용 (필요한 컬럼만 명시)
@@ -791,7 +851,8 @@ class ErpApiService
 코드 변경을 제안하기 전에 반드시 아래 항목을 확인하세요:
 
 - [ ] **Bundle/ 보호 확인** — 수정 대상이 `Bundle/`이 아닌 `module/`에 있는가?
-- [ ] **보호 파일 미접촉** — `Asset/Admin/gd_share/`, `config/app/system_version.php`, `config/plus_shop_info.php`를 건드리지 않는가?
+- [ ] **보호 파일 미접촉** — `Asset/Admin/` 전체, `admin/gd_share/`, `config/app/system_version.php`, `config/plus_shop_info.php`를 건드리지 않는가?
+- [ ] **관리자 스킨 변경** — 어드민 layout/footer/head/menu/도메인 화면을 수정한다면 `Asset/Admin/`이 아닌 `admin/<동일 경로>`에서 작업하는가?
 - [ ] **네임스페이스 정합성** — module 클래스에서 `Bundle` 접두사를 올바르게 제거했는가?
 - [ ] **App::load() 사용** — `new \Bundle\...` 대신 `App::load()` 또는 `App::getInstance()`를 사용하는가?
 - [ ] **부모 클래스 동작 확인** — `parent::index()` 등이 `exit()`를 호출하는지 소스를 직접 확인했는가?

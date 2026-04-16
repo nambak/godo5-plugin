@@ -45,9 +45,16 @@ HTTP Request
 │   ├── Controller/
 │   └── Widget/
 │
-├── Asset/Admin/               # 관리자 뷰
-│   ├── css/admin-custom.css   # 커스텀 CSS (자동 로드)
-│   └── script/admin-custom.js # 커스텀 JS (자동 로드)
+├── Asset/Admin/               # 관리자 스킨 원본 레퍼런스 (수정 금지, 자동패치 대상)
+│   ├── footer.php / head.php / layout_*.php / menu*.php
+│   └── base/ goods/ order/ policy/ design/ ...
+│
+├── admin/                     # 실제 서비스되는 관리자 영역 (Asset/Admin/ 미러링으로 오버라이드)
+│   ├── footer.php             # ← Asset/Admin/footer.php를 미러링해 여기서 편집
+│   ├── goods/ order/ policy/ design/   # 동일 규칙으로 화면 파일 오버라이드
+│   ├── script/admin-custom.js # 모든 어드민 화면에 자동 로드
+│   ├── css/admin-custom.css   # 모든 어드민 화면에 자동 로드
+│   └── gd_share/              # 자동 중앙관리 대상 (수정 금지)
 │
 └── data/skin/                 # 프론트엔드 템플릿
     ├── front/{skinName}/
@@ -64,6 +71,7 @@ HTTP Request
 4. **커스텀 테이블 접두사** — `dpx_` 사용 (es_, zz_ 금지)
 5. **관리자 설정 우선 확인** — 코드 수정 전 관리자 페이지 설정 확인
 6. **튜닝 코드 로깅은 `userLog` 채널 `debug` 레벨만 허용** — 상세는 아래 "로깅 규칙" 참조
+7. **관리자 스킨 수정 금지(Asset/Admin/)** — `admin/<동일 경로>`로 미러링하여 오버라이드 (SKILL.md "관리자 스킨 오버라이드" 섹션 참조)
 
 ---
 
@@ -72,7 +80,8 @@ HTTP Request
 코드 변경 전에 반드시 확인:
 
 - [ ] 수정 대상이 `Bundle/`이 아닌 `module/`에 있는가?
-- [ ] `Asset/Admin/gd_share/`, `config/app/system_version.php` 등 보호 파일을 건드리지 않는가?
+- [ ] `Asset/Admin/` 전체, `admin/gd_share/`, `config/app/system_version.php`, `config/plus_shop_info.php` 보호 파일을 건드리지 않는가?
+- [ ] 어드민 스킨(footer/head/layout/menu/도메인 화면)을 수정한다면 `Asset/Admin/`이 아닌 `admin/<동일 경로>`에서 작업하는가?
 - [ ] module 네임스페이스에서 `Bundle` 접두사를 올바르게 제거했는가?
 - [ ] `new \Bundle\...` 대신 `App::load()` 사용하는가?
 - [ ] `parent::index()` 등이 `exit()`를 호출하는지 부모 소스를 확인했는가?
