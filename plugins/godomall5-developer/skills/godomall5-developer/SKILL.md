@@ -397,6 +397,52 @@ $order = new \Bundle\Component\Order\Order(); // 사용 금지
 
 ## 데이터베이스 접근
 
+### 스키마 조회 — 1차 출처는 공식 정의서
+
+DB 컬럼/인덱스/타입 질문이 생기면 **소스 grep으로 역추론하기 전에 반드시 고도몰5 공식 DB 정의서를 먼저 확인**합니다. 소스에서 grep으로 얻은 컬럼명은 "쿼리에 등장한 컬럼"만 보여주므로, 존재하지만 쓰이지 않는 컬럼이나 타입·NULL·COMMENT 정보는 놓칩니다.
+
+**조회 순서 (이 순서 고정)**:
+
+1. **공식 정의서 API (진실의 원천)**
+   - 목록: https://doc.godomall5.godomall.com/godo/database/table_layout.php
+   - 개별 스키마 JSON API:
+     ```bash
+     curl -sSL "https://doc.godomall5.godomall.com/godo/database/table_ps.php?tableName=<테이블명>"
+     ```
+   - 응답 포맷:
+     ```json
+     {
+       "SCHEMA": {
+         "컬럼명": {
+           "ORDINAL_POSITION", "COLUMN_DEFAULT", "IS_NULLABLE",
+           "DATA_TYPE", "COLUMN_TYPE", "COLUMN_KEY",
+           "COLUMN_COMMENT", "CHARACTER_SET_NAME", "COLLATION_NAME", ...
+         }
+       },
+       "INDEX": { "컬럼명": { "INDEX_NAME", "SEQ_IN_INDEX", "NON_UNIQUE", ... } }
+     }
+     ```
+   - **테이블명은 카멜케이스**입니다: `es_orderGoods`, `es_memberMileage`, `es_configGlobal`. snake_case(`es_order_goods`)로 조회하면 실패합니다.
+   - 인증 불필요, 공개 문서.
+
+2. **프로젝트 커스텀 필드** — `module/Component/Database/DBTableField.php`
+   - 공식 정의서에 없는 컬럼(예: `relatedOrderNo`, `dpx_*`)이 있다면 이 파일의 `tableXxx()` 오버라이드에서 정의되어 있을 가능성이 큼.
+
+3. **Bundle 쿼리 grep** — 위 둘로 해결 안 될 때 보조 수단
+   ```bash
+   grep -rn "DB_<테이블상수>" Bundle/ --include="*.php" | grep -iE "SELECT|INSERT|UPDATE"
+   ```
+
+**왜 이 순서인가**: 추측으로 짠 SQL은 `Unknown column` 같은 런타임 오류를 내고 사용자 시간을 낭비시킵니다. 정의서는 한 번의 curl로 끝납니다.
+
+**빠른 예시** — `es_config` 스키마 즉시 확인:
+```bash
+curl -sSL "https://doc.godomall5.godomall.com/godo/database/table_ps.php?tableName=es_config" | python3 -m json.tool
+```
+→ PK가 `(groupCode, code)`, `data`는 `json` 타입임을 즉시 확인 가능. 이 정보 없이는 `JSON_EXTRACT`로 정책값을 뽑는 SQL을 짤 수 없음.
+
+---
+
 ### DB 클래스 주요 메서드
 
 | 메서드 | 설명 |
