@@ -754,7 +754,6 @@ strpos($haystack, $needle) !== false;       // str_contains 대신
 - **상수**: UPPER_SNAKE_CASE (`ORDER_STATUS_PAYMENT_COMPLETE`)
 - **전역 헬퍼 함수**: `gd_` 접두사 (`gd_isset()`, `gd_htmlspecialchars()`)
 - **DB 컬럼**: 고도몰 원본 컬럼명 유지 (`orderNo`, `goodsNm`, `memNo`)
-- **커스텀 코드 주석 마커**: `// jdev.YYYYMMDD.s` ~ `// jdev.YYYYMMDD.e`
 
 ---
 
@@ -881,6 +880,14 @@ class ErpApiService
 4. **네임스페이스 충돌**: module 클래스에서 `Bundle` 접두사를 제거하지 않으면 오버라이드가 동작하지 않습니다.
 5. **프론트엔드 JS 이벤트**: 동적 요소에는 직접 바인딩 대신 이벤트 위임 사용 — `$(document).on('click', '.btn', ...)`
 6. **컨트롤러 전체 복사 금지**: Bundle Controller를 통째로 복사하면 네임스페이스 불일치, Bundle 내부 참조 깨짐 등 심각한 문제 발생. 반드시 `extends` + 메서드 단위 오버라이드로 접근하세요.
+7. **`$db->query('UPDATE ...', $bind)`는 조용히 실패**: UPDATE/INSERT/DELETE를 `query()`에 bind array와 함께 보내면 바인드/commit이 일어나지 않고 예외도 없음. 튜닝 UPDATE는 반드시 `$db->set_update_db($table, $paramArr, $where, $bind)`를 쓰고, 커밋 직후 재조회로 반영 여부를 검증하세요.
+    - 증상: "성공 alert → 리로드하면 데이터 그대로"
+    - Bundle 코어의 `setUpdateCartDirect` / `setUpdateCartStock`에도 같은 잘못된 패턴이 남아 있으므로 참고해서 따라 쓰지 말 것
+8. **JSON 숫자 문자열 키는 PHP `int`로 자동 캐스팅**: `json_decode('{"1000013355000": [...]}', true)`의 키는 `int(1000013355000)`이 됨. `is_string($key)` 필터는 숫자 문자열 키 엔트리를 전부 탈락시키므로 `(string)$key`로 정규화한 뒤 prefix/length를 비교하세요.
+    - 주로 `optionText` / `optionTextInfo` / `optionSize` 같은 goods+index 복합키 JSON에서 발생
+9. **`OrderAdmin::getOrderView`가 `optionTextInfo`를 재가공**: DB 원본이 `[sizeLabel, description, price]` indexed 배열이어도 `getOrderView`를 거치면 `{optionName, optionValue, optionTextPrice}` assoc로 바뀌어 `$entry[0]`/`$entry[1]` 접근이 null이 됩니다. 상세 컨트롤러·뷰에서는 `$entry[0] ?? $entry['optionName']` 식의 fallback 체인을 두세요.
+    - `SELECT optionTextInfo FROM es_orderGoods`로 직접 읽은 값은 원본 포맷이 유지됨 — 경로에 따라 구조가 다르다는 점을 기억
+10. **관리자 AJAX는 상대경로로 작성**: 어드민이 서브도메인(`gdadmin.example.com`)에 분리된 배포와 본도메인 + `/admin/` prefix 배포가 혼재하므로, `fetch('/admin/order/order_ps.php?...')`처럼 절대경로로 고정하면 한쪽에서 404가 납니다. 공통 JS(`admin/script/admin-custom.js` 등)는 상대경로(`order_ps.php`, `../order/order_ps.php`)로 작성해 현재 페이지 URL 기준으로 해석되게 하세요.
 
 ---
 
