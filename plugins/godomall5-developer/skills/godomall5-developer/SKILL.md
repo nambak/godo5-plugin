@@ -754,7 +754,6 @@ strpos($haystack, $needle) !== false;       // str_contains 대신
 - **상수**: UPPER_SNAKE_CASE (`ORDER_STATUS_PAYMENT_COMPLETE`)
 - **전역 헬퍼 함수**: `gd_` 접두사 (`gd_isset()`, `gd_htmlspecialchars()`)
 - **DB 컬럼**: 고도몰 원본 컬럼명 유지 (`orderNo`, `goodsNm`, `memNo`)
-- **커스텀 코드 주석 마커**: `// jdev.YYYYMMDD.s` ~ `// jdev.YYYYMMDD.e`
 
 ---
 
