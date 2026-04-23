@@ -881,6 +881,10 @@ class ErpApiService
 4. **네임스페이스 충돌**: module 클래스에서 `Bundle` 접두사를 제거하지 않으면 오버라이드가 동작하지 않습니다.
 5. **프론트엔드 JS 이벤트**: 동적 요소에는 직접 바인딩 대신 이벤트 위임 사용 — `$(document).on('click', '.btn', ...)`
 6. **컨트롤러 전체 복사 금지**: Bundle Controller를 통째로 복사하면 네임스페이스 불일치, Bundle 내부 참조 깨짐 등 심각한 문제 발생. 반드시 `extends` + 메서드 단위 오버라이드로 접근하세요.
+7. **`$db->query('UPDATE …', $bind)` 는 조용히 실패합니다**: SELECT 계열과 달리 UPDATE/INSERT/DELETE 를 `query()` 에 bind array 와 함께 보내면 **바인드/commit 이 일어나지 않는데 예외도 던지지 않습니다**. 실제 운영에서 "성공 alert → 리로드 후 데이터 그대로" 패턴으로 드러납니다. Bundle 코어의 `setUpdateCartDirect` / `setUpdateCartStock` 에도 이 잘못된 패턴이 남아 있어 참고해서 따라 쓰면 같은 함정에 빠집니다. **튜닝 코드에서 UPDATE 는 반드시 `$db->set_update_db($table, $paramArr, $where, $bind)` 사용**, 커밋 직후 같은 키로 재조회해 기대값이 반영됐는지 검증하는 것을 습관화하세요.
+8. **JSON object 의 숫자 문자열 키는 PHP 배열에서 int 로 자동 캐스팅됩니다**: `json_decode('{"1000013355000": […], "": […]}', true)` 의 결과는 `[int(1000013355000) => […], "" => […]]` 가 됩니다. `foreach ($arr as $key => $v) { if (!is_string($key)) continue; }` 패턴으로 per-item 키를 필터하면 **숫자 문자열 키 엔트리가 전부 탈락**합니다. `optionText` / `optionTextInfo` / `optionSize` 같은 goods+index 복합키 JSON 을 다룰 때는 반드시 `(string)$key` 로 정규화한 뒤 prefix/length 비교.
+9. **Bundle `OrderAdmin::getOrderView` 는 `optionTextInfo` 를 재가공합니다**: `es_orderGoods.optionTextInfo` 에 영속된 원본(튜닝 포맷이 `[sizeLabel, description, price]` indexed 배열인 경우가 흔함)과 달리, `getOrderView` 를 거치면 각 엔트리가 **`{optionName, optionValue, optionTextPrice}` assoc** 으로 바뀝니다. 즉 `$entry[0]`/`$entry[1]` 접근은 통째로 null. 상세 컨트롤러·뷰에서 optionTextInfo 를 파싱할 때는 `$entry[0] ?? $entry['optionName']`, `$entry[1] ?? $entry['optionValue']` 식의 fallback 체인을 두세요. 반대로 `SELECT optionTextInfo FROM es_orderGoods` 로 **직접** 읽어 `json_decode` 한 값은 원본 포맷이 유지되므로 동일 파서로 재사용하면 안 됩니다 — 경로별로 데이터 구조가 다르다는 점을 기억.
+10. **관리자 AJAX 는 상대경로로 작성하세요**: 배포에 따라 어드민이 서브도메인(`gdadmin.example.com`) 에 분리된 사이트와 본도메인 + `/admin/` prefix 로 운영되는 사이트가 모두 존재합니다. JS 에서 `fetch('/admin/order/order_ps.php?...')` 처럼 절대경로로 고정하면 서브도메인 배포에서 404, 반대 경우도 마찬가지. 공통 JS(`admin/script/admin-custom.js` 등)에서 호출하는 어드민 엔드포인트는 항상 상대경로(`order_ps.php`, `../order/order_ps.php`) 로 작성해 현재 페이지 URL 기준으로 해석되게 하세요.
 
 ---
 
