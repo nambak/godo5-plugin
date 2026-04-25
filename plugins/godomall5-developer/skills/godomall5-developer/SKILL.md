@@ -843,21 +843,6 @@ if ($this->isAlreadyStockDeducted($orderNo)) {
 }
 ```
 
-### 커스텀 코드 마커 (선택 — 자동패치/추적 편의)
-
-대규모 커스터마이징 영역은 시작/종료 마커 주석으로 감싸 두면 자동패치 이후나 다른 개발자가 손댈 때 영향 범위를 빠르게 식별할 수 있습니다. 마커 prefix는 프로젝트 컨벤션을 따르세요(예: `dpx`, `jdev`, 사명 약어 등).
-
-```php
-// dpx.20260425.s — 사은품 등급 분류 로직 추가
-$giftLevel = $this->resolveGiftLevel($memberGrade);
-$arrField['giftLevel'] = $giftLevel;
-// dpx.20260425.e
-```
-
-- 시작/종료 라인은 `.s` / `.e` 접미사로 구분.
-- 날짜 8자리(YYYYMMDD)는 변경 시점을 적어 두면 이력 추적이 쉬움.
-- 한 메서드 안에 여러 영역이 있으면 마커 prefix 또는 부가 식별자를 다르게 줘서 혼동 방지.
-
 ### 프론트엔드 JS 규칙
 
 ```javascript
