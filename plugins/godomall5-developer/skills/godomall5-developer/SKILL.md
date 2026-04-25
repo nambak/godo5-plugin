@@ -896,14 +896,23 @@ class AddGoodsExistOrderController extends \Bundle\Controller\Api\Api\Controller
     /** @var string[] 호출 허용 IP (운영 ERP/사내망 등) */
     private $allowedIPs = ['220.118.145.49', '222.122.86.204'];
 
+    /**
+     * @var string[] 신뢰할 수 있는 프록시(LB/CDN) IP — 인프라에 맞춰 채울 것.
+     * 비워 두면 X-Forwarded-For는 모두 무시되고 REMOTE_ADDR만 사용된다(가장 안전한 기본값).
+     */
+    private $trustedProxies = [
+        // '127.0.0.1',
+        // '10.0.0.5',         // 내부 LB
+        // 'XXX.XXX.XXX.XXX',  // CDN 엣지 IP — 공급사 제공 목록에서 채울 것
+    ];
+
     /** @var string CORS Origin — 직접 브라우저에서 호출되는 경우만 */
     private $allowedOrigin = 'https://example.godomall.com';
 
     public function index()
     {
-        // 1) IP 화이트리스트 — 프록시 환경 대비 X-Forwarded-For 우선
-        $clientIp = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
-        $clientIp = trim(explode(',', $clientIp)[0]);
+        // 1) IP 화이트리스트 — trusted proxy 검증 후에만 X-Forwarded-For 신뢰
+        $clientIp = $this->resolveClientIp();
         if (!in_array($clientIp, $this->allowedIPs, true)) {
             \Logger::channel('userLog')->debug(__METHOD__ . '[' . __LINE__ . '], blocked IP: ' . $clientIp);
             $this->respond(403, ['result' => false, 'message' => 'forbidden']);
@@ -944,12 +953,52 @@ class AddGoodsExistOrderController extends \Bundle\Controller\Api\Api\Controller
         }
         exit;
     }
+
+    /**
+     * 실제 클라이언트 IP 결정.
+     *
+     * 핵심 원칙: HTTP_X_FORWARDED_FOR 는 클라이언트가 임의로 설정 가능한 헤더이므로,
+     * 직전 hop(REMOTE_ADDR)이 신뢰 목록에 있을 때만 참조한다.
+     */
+    private function resolveClientIp(): string
+    {
+        $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+
+        // (a) 직전 peer가 trusted proxy가 아니면 헤더 무시 — REMOTE_ADDR이 곧 클라이언트
+        if (!$this->isTrustedProxy($remoteAddr)) {
+            return $remoteAddr;
+        }
+
+        $forwarded = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+        if ($forwarded === '') {
+            return $remoteAddr;
+        }
+
+        // (b) "client, proxy1, proxy2" 형식 — 끝에서부터 trusted proxy IP를 벗겨낸 뒤 leftmost가 클라이언트
+        $hops = array_map('trim', explode(',', $forwarded));
+        while (!empty($hops) && $this->isTrustedProxy(end($hops))) {
+            array_pop($hops);
+        }
+        $candidate = !empty($hops) ? array_shift($hops) : $remoteAddr;
+
+        // (c) 위조된 비-IP 문자열 차단
+        return filter_var($candidate, FILTER_VALIDATE_IP) !== false ? $candidate : $remoteAddr;
+    }
+
+    private function isTrustedProxy(string $ip): bool
+    {
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            return false;
+        }
+        // 단순 비교 — CIDR 대역(예: '10.0.0.0/8')이 필요하면 별도 헬퍼/라이브러리 사용 권장
+        return in_array($ip, $this->trustedProxies, true);
+    }
 }
 ```
 
 ### 보안 체크리스트
 
-- [ ] **인증 방식 결정** — IP 화이트리스트 / Bearer 토큰 / HMAC 서명 중 1개 이상 적용 (IP만으로는 동일 IP 멀티테넌트 환경에서 우회됨)
+- [ ] **인증 방식 결정** — Bearer 토큰 / HMAC 서명 중 **반드시 1개 이상** 적용. IP 화이트리스트는 보조 수단으로만 사용 (프록시 환경에서 헤더 위조로 우회 가능 + 동일 IP 멀티테넌트 환경에서 무력화)
 - [ ] **CORS Origin** 은 `*`이 아닌 **명시적 도메인**만 허용
 - [ ] **Preflight(OPTIONS)** 응답 처리 누락 방지
 - [ ] **요청·응답 로깅** — `\Logger::channel('userLog')->debug()` (감사·디버깅 목적)
@@ -960,7 +1009,17 @@ class AddGoodsExistOrderController extends \Bundle\Controller\Api\Api\Controller
 
 ### 프록시 환경에서의 IP 추출
 
-CDN/L7 LB/Cloudflare 뒤에 있을 경우 `$_SERVER['REMOTE_ADDR']`은 **프록시 IP**입니다. **신뢰할 수 있는 프록시 환경에서만** `HTTP_X_FORWARDED_FOR`를 사용하세요. 신뢰 못 하는 환경에서 그대로 사용하면 클라이언트가 헤더를 위조해 화이트리스트를 우회할 수 있습니다.
+`HTTP_X_FORWARDED_FOR`는 **클라이언트가 임의로 설정 가능한 HTTP 헤더**입니다. 인증·화이트리스트 판단에 그대로 사용하면 헤더를 위조해 우회할 수 있으므로, 위 예시처럼 **trusted proxy 검증을 거친 뒤에만 신뢰**하세요.
+
+규칙은 다음과 같습니다.
+
+1. **`$trustedProxies` 목록 유지** — 인프라(L4/L7 LB, CDN 엣지, 사내 리버스 프록시)의 실제 IP만 등록. CDN을 쓰면 공급사가 제공하는 엣지 IP 목록을 주기적으로 갱신.
+2. **`REMOTE_ADDR`(직전 peer)이 trusted proxy일 때만** `HTTP_X_FORWARDED_FOR`를 참조. 그렇지 않으면 헤더는 전부 무시하고 `REMOTE_ADDR`을 클라이언트로 간주.
+3. **헤더 형식은 `client, proxy1, proxy2`** — 다중 hop 환경이면 끝에서부터 trusted proxy IP를 벗겨낸 후 남은 leftmost를 클라이언트 IP로 채택. 끝까지 신뢰할 수 없는 hop이 끼어 있으면 무효화.
+4. **결과 IP는 `filter_var(..., FILTER_VALIDATE_IP)`로 형식 검증** — 비-IP 문자열로 위조된 헤더 차단.
+5. **CIDR 대역**(예: `10.0.0.0/8`, Cloudflare 대역) 매칭이 필요하면 단순 `in_array` 대신 별도 헬퍼 또는 `Symfony\Component\HttpFoundation\IpUtils::checkIp()` 같은 검증된 라이브러리를 사용하세요.
+
+> **추가 인증을 반드시 병행하라.** 프록시 환경에서는 IP 화이트리스트가 위조 한 번으로 무력화될 수 있습니다. 운영 환경에서는 **Bearer 토큰** 또는 **HMAC-SHA256 서명**(공유 비밀키 + 타임스탬프 + 요청 본문) 같은 응용 계층 인증을 IP 검증과 **함께** 적용하세요. IP만으로 인증을 종결하지 마세요.
 
 ---
 
