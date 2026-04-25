@@ -40,6 +40,8 @@ description: "NHN Godo5(고도몰5) 쇼핑몰 개발 전문 스킬. 새 프로�
 - `admin/gd_share/` 디렉토리 (자동 중앙관리 대상)
 - `config/app/system_version.php`
 - `config/plus_shop_info.php`
+- `route.php` — 애플리케이션 진입점, USERPATH/SYSPATH 부트스트랩 (자동패치 대상)
+- `system/<버전>/` — 프레임워크 코어가 별도 디렉토리에 분리 배치된 변형 배포의 코어 전체
 
 > 어드민 스킨(footer/head/layout/menu/도메인 화면)은 `Asset/Admin/`이 아니라 `admin/<동일 경로>`에 미러링하여 오버라이드한다. 자세한 규칙은 아래 "관리자 스킨 오버라이드" 섹션 참조.
 
@@ -114,6 +116,31 @@ module/Controller/Front/{Domain}/XxxController.php   ← 여기서 개발
 ```
 
 고도몰5의 Classloader는 `module > Bundle` 우선순위로 클래스를 로드합니다. 따라서 module/에 같은 네임스페이스 경로로 클래스를 만들면 자동으로 오버라이드됩니다.
+
+### 미리보기/스테이징 레이어 (`data/module/`)
+
+`data/module/`은 godo5의 **미리보기 모드 코드 위치**입니다. 다음 조건에서 `module/`보다 우선 로드됩니다.
+
+- 요청 URL에 `__gd5_work_preview` 파라미터가 있을 때
+- 또는 세션에 미리보기 플래그가 설정되어 있을 때
+
+용도: 운영 코드(`module/`)에 영향 없이 변경을 검증할 때 사용. 검증이 끝나면 `module/`로 이동(merge)합니다.
+
+> **3계층으로 보이는 프로젝트** (예: `Bundle/ → data/module/ → module/`)는 별도 아키텍처가 아니라 **미리보기 레이어가 활성화된 상태**입니다. 실 운영 로직은 항상 `module/`에 있다고 가정하고 추적하세요.
+
+### 오버라이드 제외 네임스페이스
+
+다음 네임스페이스는 `module/`에 같은 경로로 클래스를 만들어도 **오버라이드되지 않습니다**.
+
+- `Framework\` — 프레임워크 부트스트랩 (DB, Session, Request, Logger 핵심)
+- `Bundle\` — 코어 그 자체 (`module/`이 이 네임스페이스의 prefix를 제거한 형태)
+- `Core\` — 클래스로더/라우터 등 시스템 기반
+
+이 영역의 동작을 바꿔야 한다면 Decorator/Observer 패턴이나 어드민 정책 변경 등 다른 방법을 검토하세요.
+
+### 프레임워크 코어 위치 변형
+
+일부 배포는 `Bundle/`이 프로젝트 루트가 아니라 **상위 `system/<버전>/` 디렉토리**에 위치하고, `route.php`가 `USERPATH`/`SYSPATH` 상수로 부트스트랩합니다. `config/app/system_version.php`에 시스템 버전이 박혀 있으면 이 패턴입니다. 이 경우 `Bundle/` 검색은 `system/<버전>/Bundle/`까지 확장해야 합니다.
 
 ---
 
@@ -220,6 +247,27 @@ class OrderPsController extends \Bundle\Controller\Front\Order\OrderPsController
     }
 }
 ```
+
+### 패턴 4: 신규 Controller (Bundle 대응 클래스가 없을 때)
+
+Bundle에 대응 클래스가 없는 신규 기능을 추가할 때는, **프레임워크 베이스 Controller**를 직접 상속합니다. 이 경우 `parent::index()`는 베이스 클래스의 기본 동작만 수행하므로, 사실상 전체 로직을 새로 작성하게 됩니다.
+
+```php
+namespace Controller\Front\Subscribe;
+
+class SubscribePsController extends \Controller\Front\Controller
+{
+    public function index()
+    {
+        // 신규 비즈니스 로직 — 대응되는 Bundle Controller 없음
+    }
+}
+```
+
+**주의**:
+- URL 라우팅이 동작하려면 진입 PHP 파일(`/subscribe/...` 또는 `admin/subscribe/...`)이 함께 필요할 수 있음 — 프로젝트 라우팅 컨벤션 확인 필수.
+- 신규 Controller라도 클래스 위치는 `module/Controller/{Admin,Front,Mobile}/...` 아래여야 함. Bundle/에 신규 파일 만들지 말 것.
+- Admin/Mobile 영역도 동일 패턴: `extends \Controller\Admin\Controller`, `extends \Controller\Mobile\Controller`.
 
 ### 주요 Controller 메서드
 
@@ -819,7 +867,148 @@ $('.btn-cart').click(function () { ... });
 
 ---
 
-## ERP / 외부 API 연동 패턴
+## API Controller 패턴 (서버 측 — 외부에서 호출되는 엔드포인트)
+
+외부 시스템(ERP, 모바일 앱, 결제 콜백, Webhook 등)이 호출하는 엔드포인트를 만들 때는 `Bundle\Controller\Api\Api\Controller`를 상속합니다. 위치는 `module/Controller/Api/{Domain}/{Name}Controller.php`, 네임스페이스는 `Controller\Api\{Domain}` (Bundle 접두사 제거).
+
+### 기본 구조 (IP 화이트리스트 + CORS + JSON 응답)
+
+```php
+namespace Controller\Api\Dp;
+
+class AddGoodsExistOrderController extends \Bundle\Controller\Api\Api\Controller
+{
+    /** @var string[] 호출 허용 IP (운영 ERP/사내망 등) */
+    private $allowedIPs = ['220.118.145.49', '222.122.86.204'];
+
+    /**
+     * @var string[] 신뢰할 수 있는 프록시(LB/CDN) IP — 인프라에 맞춰 채울 것.
+     * 비워 두면 X-Forwarded-For는 모두 무시되고 REMOTE_ADDR만 사용된다(가장 안전한 기본값).
+     */
+    private $trustedProxies = [
+        // '127.0.0.1',
+        // '10.0.0.5',         // 내부 LB
+        // 'XXX.XXX.XXX.XXX',  // CDN 엣지 IP — 공급사 제공 목록에서 채울 것
+    ];
+
+    /** @var string CORS Origin — 직접 브라우저에서 호출되는 경우만 */
+    private $allowedOrigin = 'https://example.godomall.com';
+
+    public function index()
+    {
+        // 1) IP 화이트리스트 — trusted proxy 검증 후에만 X-Forwarded-For 신뢰
+        $clientIp = $this->resolveClientIp();
+        if (!in_array($clientIp, $this->allowedIPs, true)) {
+            \Logger::channel('userLog')->debug(__METHOD__ . '[' . __LINE__ . '], blocked IP: ' . $clientIp);
+            $this->respond(403, ['result' => false, 'message' => 'forbidden']);
+            return;
+        }
+
+        // 2) CORS 헤더 (꼭 필요한 도메인만 명시 — `*` 사용 자제)
+        header('Access-Control-Allow-Origin: ' . $this->allowedOrigin);
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type');
+
+        // 3) Preflight(OPTIONS) 처리
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+            $this->respond(204, null);
+            return;
+        }
+
+        // 4) 비즈니스 로직
+        try {
+            $result = $this->doWork(\Request::post()->toArray());
+            $this->respond(200, ['result' => true, 'data' => $result]);
+        } catch (\Throwable $e) {
+            \Logger::channel('userLog')->debug(
+                __METHOD__ . '[' . __LINE__ . '], ' . $e->getMessage(),
+                ['trace' => $e->getTraceAsString()]
+            );
+            $this->respond(500, ['result' => false, 'message' => '내부 오류']);
+        }
+    }
+
+    private function respond(int $status, $body): void
+    {
+        http_response_code($status);
+        header('Content-Type: application/json; charset=utf-8');
+        if ($body !== null) {
+            // JSON_UNESCAPED_UNICODE — 한글이 \uXXXX로 깨지지 않도록 필수
+            echo json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+        exit;
+    }
+
+    /**
+     * 실제 클라이언트 IP 결정.
+     *
+     * 핵심 원칙: HTTP_X_FORWARDED_FOR 는 클라이언트가 임의로 설정 가능한 헤더이므로,
+     * 직전 hop(REMOTE_ADDR)이 신뢰 목록에 있을 때만 참조한다.
+     */
+    private function resolveClientIp(): string
+    {
+        $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+
+        // (a) 직전 peer가 trusted proxy가 아니면 헤더 무시 — REMOTE_ADDR이 곧 클라이언트
+        if (!$this->isTrustedProxy($remoteAddr)) {
+            return $remoteAddr;
+        }
+
+        $forwarded = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+        if ($forwarded === '') {
+            return $remoteAddr;
+        }
+
+        // (b) "client, proxy1, proxy2" 형식 — 끝에서부터 trusted proxy IP를 벗겨낸 뒤 leftmost가 클라이언트
+        $hops = array_map('trim', explode(',', $forwarded));
+        while (!empty($hops) && $this->isTrustedProxy(end($hops))) {
+            array_pop($hops);
+        }
+        $candidate = !empty($hops) ? array_shift($hops) : $remoteAddr;
+
+        // (c) 위조된 비-IP 문자열 차단
+        return filter_var($candidate, FILTER_VALIDATE_IP) !== false ? $candidate : $remoteAddr;
+    }
+
+    private function isTrustedProxy(string $ip): bool
+    {
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            return false;
+        }
+        // 단순 비교 — CIDR 대역(예: '10.0.0.0/8')이 필요하면 별도 헬퍼/라이브러리 사용 권장
+        return in_array($ip, $this->trustedProxies, true);
+    }
+}
+```
+
+### 보안 체크리스트
+
+- [ ] **인증 방식 결정** — Bearer 토큰 / HMAC 서명 중 **반드시 1개 이상** 적용. IP 화이트리스트는 보조 수단으로만 사용 (프록시 환경에서 헤더 위조로 우회 가능 + 동일 IP 멀티테넌트 환경에서 무력화)
+- [ ] **CORS Origin** 은 `*`이 아닌 **명시적 도메인**만 허용
+- [ ] **Preflight(OPTIONS)** 응답 처리 누락 방지
+- [ ] **요청·응답 로깅** — `\Logger::channel('userLog')->debug()` (감사·디버깅 목적)
+- [ ] **JSON 인코딩** — 항상 `JSON_UNESCAPED_UNICODE`
+- [ ] **Content-Type** — 응답 시 `application/json; charset=utf-8` 명시
+- [ ] **에러 시 HTTP 상태 코드** — 200으로 일괄 응답하지 말고 `403 / 422 / 500` 구분
+- [ ] **에러 메시지** — 외부에 내부 스택트레이스/SQL을 노출하지 말 것 (로그만)
+
+### 프록시 환경에서의 IP 추출
+
+`HTTP_X_FORWARDED_FOR`는 **클라이언트가 임의로 설정 가능한 HTTP 헤더**입니다. 인증·화이트리스트 판단에 그대로 사용하면 헤더를 위조해 우회할 수 있으므로, 위 예시처럼 **trusted proxy 검증을 거친 뒤에만 신뢰**하세요.
+
+규칙은 다음과 같습니다.
+
+1. **`$trustedProxies` 목록 유지** — 인프라(L4/L7 LB, CDN 엣지, 사내 리버스 프록시)의 실제 IP만 등록. CDN을 쓰면 공급사가 제공하는 엣지 IP 목록을 주기적으로 갱신.
+2. **`REMOTE_ADDR`(직전 peer)이 trusted proxy일 때만** `HTTP_X_FORWARDED_FOR`를 참조. 그렇지 않으면 헤더는 전부 무시하고 `REMOTE_ADDR`을 클라이언트로 간주.
+3. **헤더 형식은 `client, proxy1, proxy2`** — 다중 hop 환경이면 끝에서부터 trusted proxy IP를 벗겨낸 후 남은 leftmost를 클라이언트 IP로 채택. 끝까지 신뢰할 수 없는 hop이 끼어 있으면 무효화.
+4. **결과 IP는 `filter_var(..., FILTER_VALIDATE_IP)`로 형식 검증** — 비-IP 문자열로 위조된 헤더 차단.
+5. **CIDR 대역**(예: `10.0.0.0/8`, Cloudflare 대역) 매칭이 필요하면 단순 `in_array` 대신 별도 헬퍼 또는 `Symfony\Component\HttpFoundation\IpUtils::checkIp()` 같은 검증된 라이브러리를 사용하세요.
+
+> **추가 인증을 반드시 병행하라.** 프록시 환경에서는 IP 화이트리스트가 위조 한 번으로 무력화될 수 있습니다. 운영 환경에서는 **Bearer 토큰** 또는 **HMAC-SHA256 서명**(공유 비밀키 + 타임스탬프 + 요청 본문) 같은 응용 계층 인증을 IP 검증과 **함께** 적용하세요. IP만으로 인증을 종결하지 마세요.
+
+---
+
+## ERP / 외부 API 연동 패턴 (클라이언트 측 — godo5에서 외부 호출)
 
 ```php
 class ErpApiService
@@ -940,6 +1129,20 @@ class ErpApiService
 - [ ] `\Logger::channel('userLog')->debug()` 로깅
 - [ ] `__()` 다국어 문자열
 - [ ] 라이선스 헤더
+- [ ] **수정한 PHP 파일은 `php -l <파일>`로 문법 체크** — godo5 프로젝트엔 통상 빌드/테스트 인프라가 없어 정적 검증 수단이 이것뿐
+
+### 검증 도구
+
+godo5 프로젝트는 일반적으로 빌드 파이프라인이나 유닛 테스트 러너가 **없습니다**. Claude가 사용 가능한 검증 도구는 다음과 같습니다.
+
+| 용도 | 명령 |
+|---|---|
+| PHP 문법 체크 | `php -l <파일>` |
+| autoload 갱신 | `composer dump-autoload` (composer가 있는 프로젝트만) |
+| 변경 추적 | `git status`, `git diff module/ admin/ data/skin/` |
+| 회귀 검증 | 관리자 화면 / 프론트에서 직접 확인 (수동) |
+
+**큰 변경**일수록 단계별 수동 검증 계획(영향 받는 화면 목록, 재현 시나리오)을 사용자에게 함께 제안하세요.
 
 ### Step 3: 응답 형식
 
@@ -981,3 +1184,4 @@ class ErpApiService
 - `references/project-template.md` — 새 프로젝트용 CLAUDE.md 템플릿
 - `references/dependencies.md` — 고도몰5 주요 의존성 목록
 - `references/db-tables.md` — 주요 DB 테이블 상수 및 설정 참조
+- `references/legacy-godo4-vs-godo5.md` — Godo4(레거시) vs Godo5 빠른 식별 가이드 — "고도몰 프로젝트"라고 가져왔는데 실제로는 PHP5 레거시인 경우 잘못된 패턴 강요 방지
